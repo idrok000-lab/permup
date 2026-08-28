@@ -1,8 +1,0 @@
-# Time in seconds
-adm: {
-    session_time: 600
-}
-
-dev: {
-    session_time: 300
-}
