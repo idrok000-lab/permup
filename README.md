@@ -1,7 +1,35 @@
-# permup
-An alternative to sudo and pkexec
-```markdown
-# PERMUP 
+# PERMUP
+
+An alternative to `sudo` and `pkexec`
+
+---
+
+## Looking for Developers!
+
+**Permup is a promising project, but I need help!** The concept is solid – a unified replacement for both `sudo` and `pkexec` with group-based permission management, client-server architecture, and strong security foundations. The code works, but there are issues that need fixing.
+
+### Current Problems
+
+- Authentication and the subsequent execution part are **infinite** – sessions don't terminate properly
+- After each daemon start, you need to manually run `chmod 666 /run/permup/socket` (temporary workaround)
+- Zombie processes appear despite `SIGCHLD` handling
+- PTY passing via `SCM_RIGHTS` works but has sporadic issues
+
+### What I Need
+
+- **C/C++ developers** familiar with Unix/Linux system programming (PAM, PTY, Unix sockets, process management)
+- **Optimization specialists** to improve performance and resource management
+- **Testers** for various distributions and init systems (systemd, OpenRC, runit, SysVinit)
+- **GUI developers** for graphical clients (`permup-gui`, `permup-gnome`, `permup-kde`)
+
+### Collaboration Rules
+
+1. All changes must comply with the existing architecture
+2. If you believe an architecture change is necessary – **contact me first** to discuss it
+3. Priority: fixing bugs → stability → performance → new features
+4. Test changes on at least two different init systems
+
+---
 
 ## 1. PURPOSE
 
@@ -9,13 +37,11 @@ To replace `sudo` and `pkexec` with a single tool that:
 - Works independently of the init system (systemd, OpenRC, runit, SysVinit)
 - Uses groups as the sole permission carrier
 - Works in both CLI and GUI
-- Is simple, secure, and compliant with the KISS philosophy
 - **Does not work remotely** – only locally via a Unix socket; remote access is via SSH, then through `permup`
 
 ## 2. OVERALL ARCHITECTURE
 
 ```
-
 ┌─────────────────────────────────────────────────────────────┐
 │                         SYSTEM                             │
 ├─────────────────────────────────────────────────────────────┤
@@ -40,7 +66,6 @@ To replace `sudo` and `pkexec` with a single tool that:
 │                                          └─────────────┘   │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
-
 ```
 
 ## 3. COMPONENTS
@@ -516,3 +541,42 @@ Rules:
 15. Time restrictions – additional security layer (ignored by root)
 16. User locks (`blocked_users` / `allowed_users`) – fine-grained control over which target users can be used
 17. Rate limiting – protection against password brute-forcing
+
+---
+
+## Why Configuration Based Solely on User Groups?
+
+The answer is simple:
+
+- **Ease of management** – Instead of defining permissions for each user individually, assign the user to the appropriate group. This reduces configuration entries from `n` users × `m` permissions to `g` groups × `m` permissions.
+- **Convenience** – Adding a new user is one command: `usermod -aG group user`. No config file editing.
+- **Control** – Groups are a proven mechanism in Unix/Linux. Administrators know and trust it.
+- **Security** – A unified group system reduces the risk of configuration errors. No accidental permission grants.
+- **Scalability** – In large environments (companies, universities), group-based management is the only sensible approach.
+- **Consistency** – All system tools use groups – permup goes further by making groups the **sole** permission carrier.
+
+## Why Invest Time in Permup?
+
+The idea of permup as an alternative to both `sudo` and `pkexec` is good. I've fixed many bugs already, but there are still many left. Searching for issues takes too much time alone. A developer support team would really help.
+
+### Why It's Worth It
+
+1. **Unified authorization** – One tool for CLI and GUI instead of two (`sudo` + `pkexec`)
+2. **Group-based management** – Simpler, more controlled, and more secure
+3. **Independence from init system** – Works everywhere
+4. **Security by design** – No SUID, PAM authentication, rate limiting, shell blocking
+5. **Client-server architecture** – Clear separation of concerns
+
+## Future Plans
+
+I want to develop various graphical clients:
+- `permup-gui` – universal graphical client
+- `permup-gnome` – native GNOME integration
+- `permup-kde` – native KDE integration
+- Other creative ideas
+
+The goal: permup becomes the default authorization tool in Linux systems.
+
+---
+
+**Contact:** If you want to join, have questions, or want to report an issue – contact me via https://github.com/idrok000-lab/permup/issues or via e-mail:  zagrzeb456@int.pl. Any help is invaluable!
