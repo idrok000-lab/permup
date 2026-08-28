@@ -1,19 +1,18 @@
 # permup
 An alternative to sudo and pkexec
 ```markdown
-# PERMUP – KOMPLETNA SPECYFIKACJA PROJEKTU
+# PERMUP 
 
-## 1. CEL
+## 1. PURPOSE
 
-Zastąpić `sudo` i `pkexec` jednym narzędziem, które:
-- Działa niezależnie od initu (systemd, OpenRC, runit, SysVinit)
-- Używa grup jako jedynego nośnika uprawnień
-- Rozróżnia komendy interaktywne (PTY) i statyczne (oneshot)
-- Działa zarówno w CLI, jak i GUI
-- Jest prosty, bezpieczny i zgodny z filozofią KISS
-- **Nie działa zdalnie** – tylko lokalnie przez gniazdo Unix; zdalny dostęp odbywa się przez SSH, a następnie przez `permup`
+To replace `sudo` and `pkexec` with a single tool that:
+- Works independently of the init system (systemd, OpenRC, runit, SysVinit)
+- Uses groups as the sole permission carrier
+- Works in both CLI and GUI
+- Is simple, secure, and compliant with the KISS philosophy
+- **Does not work remotely** – only locally via a Unix socket; remote access is via SSH, then through `permup`
 
-## 2. ARCHITEKTURA OGÓLNA
+## 2. OVERALL ARCHITECTURE
 
 ```
 
@@ -23,20 +22,20 @@ Zastąpić `sudo` i `pkexec` jednym narzędziem, które:
 │                                                             │
 │  ┌──────────────┐      Unix Socket      ┌──────────────┐  │
 │  │   permup     │ ◄──────────────────► │   permupd    │  │
-│  │   (klient)   │      /run/permup/    │   (demon)    │  │
+│  │   (client)   │      /run/permup/    │   (daemon)   │  │
 │  └──────────────┘      socket           └──────────────┘  │
 │         ▲                                       │          │
 │         │                                       │          │
 │  ┌──────┴──────┐                                │          │
 │  │ permup-gui  │                                │          │
-│  │  (klient)   │                                │          │
+│  │  (client)   │                                │          │
 │  └─────────────┘                                │          │
 │                                                 │          │
 │                                          ┌──────▼──────┐   │
-│                                          │  Dziecko    │   │
-│                                          │  (proces)   │   │
+│                                          │  Child      │   │
+│                                          │  (process)  │   │
 │                                          │  runuser    │   │
-│                                          │  + komenda  │   │
+│                                          │  + command  │   │
 │                                          │  ; exit     │   │
 │                                          └─────────────┘   │
 │                                                             │
@@ -44,97 +43,97 @@ Zastąpić `sudo` i `pkexec` jednym narzędziem, które:
 
 ```
 
-## 3. KOMPONENTY
+## 3. COMPONENTS
 
-### 3.1. `permupd` – demon
+### 3.1. `permupd` – daemon
 
-- **Uruchamianie:** przez init systemu (systemd, OpenRC, runit, SysVinit) jako root
-- **Funkcja:** nasłuchuje na gnieździe Unix, uwierzytelnia, sprawdza uprawnienia, tworzy dzieci
-- **Model:** pojedynczy proces, `fork()` na każde połączenie, rodzic wraca do nasłuchu
-- **Zbieranie zombie:** `SIGCHLD` lub `waitpid(-1, WNOHANG)` w pętli
-- **Nowe żądanie:** `list_users` – zwraca listę dozwolonych `-u` i `-h` dla danego użytkownika
-- **Zasada dla root:** Jeśli `-h root` → **pomiń wszystkie sprawdzenia** (uprawnienia, czas, blokady, powłoki)
-- **Pliki konfiguracyjne:**
-  - `/etc/permup.cfg` – uprawnienia (grupy, listy, blokady użytkowników)
-  - `/etc/permdown.cfg` – timeouty dla komend
-  - `/etc/permup/shell.rc` – wzorce promptów powłok
-  - `/etc/permup.time` – ograniczenia czasowe dla grup
-  - `/etc/permup.session` – czas ważności hasła (po stronie klienta)
-  - `/etc/permup/permup.session` – rate limiting (po stronie klienta)
+- **Startup:** by the init system (systemd, OpenRC, runit, SysVinit) as root
+- **Function:** listens on the Unix socket, authenticates, checks permissions, creates children
+- **Model:** single process, `fork()` on each connection, parent returns to listening
+- **Zombie reaping:** `SIGCHLD` or `waitpid(-1, WNOHANG)` in the loop
+- **New request:** `list_users` – returns the list of allowed `-u` and `-h` for the given user
+- **Rule for root:** If `-h root` → **skip all checks** (permissions, time, locks, shells)
+- **Configuration files:**
+  - `/etc/permup.cfg` – permissions (groups, lists, user locks)
+  - `/etc/permdown.cfg` – timeouts for commands
+  - `/etc/permup/shell.rc` – shell prompt patterns
+  - `/etc/permup.time` – time restrictions for groups
+  - `/etc/permup.session` – password validity time (client-side)
+  - `/etc/permup/permup.session` – rate limiting (client-side)
 
-### 3.2. `permup` – klient CLI
+### 3.2. `permup` – CLI client
 
-- **Funkcja:** łączy się z `permupd`, pobiera listę dozwolonych użytkowników, wysyła komendę, hasło, odbiera PTY
-- **Działanie:**
-  - Sprawdza, czy ma terminal (`isatty()`)
-  - Jeśli tak → tryb interaktywny (PTY)
-  - **Najpierw** wysyła żądanie `list_users` do `permupd`
-  - Otrzymuje listę dozwolonych `-u` i `-h`
-  - Sprawdza, czy podany `-u` i `-h` są dozwolone
-  - Jeśli nie → wyświetla odpowiedni komunikat błędu
-  - Jeśli tak → sprawdza rate limiting (`/etc/permup/permup.session`)
-    - Jeśli użytkownik jest zablokowany → wyświetla komunikat i kończy
-    - Jeśli nie → przechodzi dalej
-  - Sprawdza, czy `-h` to **root**
-    - Jeśli **tak** → **zawsze pyta o hasło roota** (nie korzysta z `/etc/permup.session`)
-    - Jeśli **nie** → sprawdza, czy istnieje ważna sesja dla pary `(-h, -u)` (zgodnie z `/etc/permup.session`)
-      - Jeśli tak → wysyła zapamiętane hasło automatycznie
-      - Jeśli nie → pyta o hasło interaktywnie
-  - Wysyła właściwe żądanie do demona
-  - Odbiera master PTY przez `SCM_RIGHTS`
-  - Przejmuje terminal i obsługuje sesję
-- **Składnia:**
+- **Function:** connects to `permupd`, retrieves the list of allowed users, sends the command, password, receives PTY
+- **Operation:**
+  - Checks if it has a terminal (`isatty()`)
+  - If yes → interactive mode (PTY)
+  - **First** sends a `list_users` request to `permupd`
+  - Receives the list of allowed `-u` and `-h`
+  - Checks if the provided `-u` and `-h` are allowed
+  - If not → displays the appropriate error message
+  - If yes → checks rate limiting (`/etc/permup/permup.session`)
+    - If the user is locked → displays a message and exits
+    - If not → proceeds
+  - Checks if `-h` is **root**
+    - If **yes** → **always asks for the root password** (does not use `/etc/permup.session`)
+    - If **no** → checks if a valid session exists for the pair `(-h, -u)` (according to `/etc/permup.session`)
+      - If yes → sends the remembered password automatically
+      - If no → asks for the password interactively
+  - Sends the actual request to the daemon
+  - Receives the master PTY via `SCM_RIGHTS`
+  - Takes over the terminal and handles the session
+- **Syntax:**
   ```bash
-  permup [-u użytkownik_docelowy] [-h użytkownik_uwierzytelniający] komenda [argumenty]
+  permup [-u target_user] [-h authenticating_user] command [arguments]
   permup -l
+  ```
+
+- `-u` – target user to run the command as (default: root)
+- `-h` – user whose password is used for authentication (default: root)
+- `-l` – displays the list of allowed users
+- The password is always provided interactively after pressing Enter, just like in sudo and pkexec – no exceptions
+- Example: `permup -u janusz -h root htop` → run as janusz, authenticate with root's password
+
+### 3.3. `permup-gui` – GUI client
+
+- **Function:** connects to `permupd`, retrieves the list of allowed users, displays a dialog window, sends the command and password
+- **Operation:**
+  - Sends a `list_users` request to `permupd`
+  - Receives the list of allowed `-u` and `-h`
+  - Displays a dialog window with:
+    - A dropdown list for `-u` (only allowed users)
+    - A dropdown list for `-h` (only allowed users)
+    - A password field
+    - OK/Cancel button
+  - After confirmation, checks rate limiting (`/etc/permup/permup.session`)
+    - If the user is locked → displays a message and exits
+    - If not → proceeds
+  - Checks if `-h` is root
+    - If yes → always asks for the root password (does not use `/etc/permup.session`)
+    - If no → checks if a valid session exists for the pair `(-h, -u)`
+      - If yes → sends the remembered password automatically
+      - If no → asks for the password in the dialog window
+  - Sends the actual request to `permupd`
+  - Receives the output and displays it in a window (or in the console from which it was launched)
+- **Use case:** `.desktop` files, menu shortcuts, Nautilus
+
+## 4. CONFIGURATION
+
+### 4.1. `/etc/permup.cfg` – permissions
+
+Structure:
+
 ```
-
-· -u – użytkownik, na którego ma zostać wykonana komenda (domyślnie: root)
-· -h – użytkownik, którego hasło jest używane do uwierzytelnienia (domyślnie: root)
-· -l – wyświetla listę dozwolonych użytkowników
-· Hasło jest zawsze podawane interaktywnie po naciśnięciu Enter, tak jak w sudo i pkexec – bez wyjątków
-· Przykład: permup -u janusz -h root htop → wykonaj jako janusz, uwierzytelnij hasłem roota
-
-3.3. permup-gui – klient GUI
-
-· Funkcja: łączy się z permupd, pobiera listę dozwolonych użytkowników, wyświetla okno dialogowe, wysyła komendę i hasło
-· Działanie:
-  · Wysyła żądanie list_users do permupd
-  · Otrzymuje listę dozwolonych -u i -h
-  · Wyświetla okno dialogowe z:
-    · Listą rozwijaną dla -u (tylko dozwoleni użytkownicy)
-    · Listą rozwijaną dla -h (tylko dozwoleni użytkownicy)
-    · Polem na hasło
-    · Przyciskiem OK/Anuluj
-  · Po zatwierdzeniu sprawdza rate limiting (/etc/permup/permup.session)
-    · Jeśli użytkownik jest zablokowany → wyświetla komunikat i kończy
-    · Jeśli nie → przechodzi dalej
-  · Sprawdza, czy -h to root
-    · Jeśli tak → zawsze pyta o hasło roota (nie korzysta z /etc/permup.session)
-    · Jeśli nie → sprawdza, czy istnieje ważna sesja dla pary (-h, -u)
-      · Jeśli tak → wysyła zapamiętane hasło automatycznie
-      · Jeśli nie → pyta o hasło w oknie dialogowym
-  · Wysyła właściwe żądanie do permupd
-  · Odbiera wyjście i wyświetla w oknie (lub w konsoli, z której zostało uruchomione)
-· Zastosowanie: pliki .desktop, skróty w menu, Nautilus
-
-4. KONFIGURACJA
-
-4.1. /etc/permup.cfg – uprawnienia
-
-Struktura:
-
-```
-grupa: {
-    tryb: darklist | whitelist
-    lista: {
-        komenda1,
-        komenda2,
+group: {
+    mode: darklist | whitelist
+    list: {
+        command1,
+        command2,
         ...
     }
     except: {
-        komenda3,
-        komenda4,
+        command3,
+        command4,
         ...
     }
     blocked_users: {
@@ -150,30 +149,30 @@ grupa: {
 }
 ```
 
-Zasady ogólne:
+General rules:
 
-· darklist: {} → pusta = wszystko dozwolone
-· whitelist: {} → pusta = nic nie jest dozwolone
-· except zawsze odwraca regułę główną:
-  · Dla darklist: except = dozwolone (mimo że na liście)
-  · Dla whitelist: except = zablokowane (mimo że na liście)
+- `darklist: {}` → empty = everything allowed
+- `whitelist: {}` → empty = nothing allowed
+- `except` always reverses the main rule:
+  - For darklist: `except` = allowed (even though on the list)
+  - For whitelist: `except` = blocked (even though on the list)
 
-Dopasowanie komend:
+Command matching:
 
-· Normalizacja flag (sortowanie alfabetyczne)
-· rm -rf = rm -fr = rm -f -r = to samo
-· Kanonizacja ścieżek (realpath)
-· Dopasowanie podciągu: rm -r blokuje rm -rf, rm -fr, rm -r -f
+- Flag normalization (alphabetical sorting)
+- `rm -rf` = `rm -fr` = `rm -f -r` = same
+- Path canonicalization (`realpath`)
+- Substring matching: `rm -r` blocks `rm -rf`, `rm -fr`, `rm -r -f`
 
-Zasady dla użytkowników docelowych:
+Rules for target users:
 
-· blocked_users – czarna lista: ci użytkownicy są zablokowani
-· allowed_users – biała lista: tylko ci użytkownicy są dozwoleni
-· Jeśli obie sekcje są zdefiniowane → allowed_users ma pierwszeństwo, blocked_users jest ignorowane
-· Jeśli żadna nie jest zdefiniowana → brak ograniczeń (można użyć każdego użytkownika docelowego)
-· Jeśli sekcja jest pusta → brak ograniczeń
+- `blocked_users` – blacklist: these users are blocked
+- `allowed_users` – whitelist: only these users are allowed
+- If both sections are defined → `allowed_users` takes precedence, `blocked_users` is ignored
+- If neither is defined → no restrictions (any target user can be used)
+- If the section is empty → no restrictions
 
-Przykład:
+Example:
 
 ```
 adm: {
@@ -208,28 +207,28 @@ dev: {
 }
 ```
 
-Domyślna grupa:
+Default group:
 
-· adm ma darklist: {} (wszystko dozwolone)
+- `adm` has `darklist: {}` (everything allowed)
 
-Łączenie grup:
+Group merging:
 
-· Użytkownik może należeć do wielu grup
-· Uprawnienia sumują się (zbiór)
-· Jeśli konflikt (dozwolone vs zablokowane) → dozwolone wygrywa
+- A user can belong to multiple groups
+- Permissions are cumulative (set union)
+- If conflict (allowed vs blocked) → allowed wins
 
-Użytkownicy bez grup:
+Users without groups:
 
-· Brak uprawnień → odmowa
+- No permissions → denial
 
-Użytkownik root:
+Root user:
 
-· Nie podlega /etc/permup.cfg
-· Ma wszystkie uprawnienia z góry – może wykonać każdą komendę jako każdy użytkownik
+- Not subject to `/etc/permup.cfg`
+- Has all permissions by default – can execute any command as any user
 
-4.2. /etc/permdown.cfg – timeouty
+### 4.2. `/etc/permdown.cfg` – timeouts
 
-Struktura:
+Structure:
 
 ```
 default: 120s
@@ -247,16 +246,16 @@ htop {
 }
 ```
 
-Zasady:
+Rules:
 
-· default – używane, gdy komenda nie jest zdefiniowana
-· Timeout dotyczy nawiązania połączenia z terminalem wywoławczym
-· Jeśli w czasie timeoutu nie uda się nawiązać połączenia zwrotnego → dziecko zabija komendę i kończy się
-· Dla GUI (brak terminala) → timeout działa jako maksymalny czas wykonania
+- `default` – used when the command is not defined
+- Timeout applies to establishing a connection with the calling terminal
+- If the return connection cannot be established within the timeout → the child kills the command and exits
+- For GUI (no terminal) → timeout acts as the maximum execution time
 
-4.3. /etc/permup/shell.rc – wzorce promptów powłok
+### 4.3. `/etc/permup/shell.rc` – shell prompt patterns
 
-Struktura:
+Structure:
 
 ```
 [root@
@@ -271,20 +270,20 @@ fish-
 sh-
 ```
 
-Zasady:
+Rules:
 
-· Każda linia to wzorzec tekstowy, który może pojawić się na wyjściu PTY
-· Jeśli którykolwiek wzorzec zostanie znaleziony w wyjściu komendy → uznajemy, że uruchomiona została powłoka
-· Plik jest czytany przez dziecko przed przekazaniem PTY do klienta
-· Admin może dodawać własne wzorce (np. [admin@, (venv) )
-· Root (-h root) pomija ten test – może uruchamiać powłoki bez ograniczeń
+- Each line is a text pattern that may appear in the PTY output
+- If any pattern is found in the command output → we consider that a shell has been started
+- The file is read by the child before passing the PTY to the client
+- Admin can add their own patterns (e.g., `[admin@`, `(venv)`)
+- Root (`-h root`) skips this test – can run shells without restrictions
 
-4.4. /etc/permup.time – ograniczenia czasowe
+### 4.4. `/etc/permup.time` – time restrictions
 
-Struktura:
+Structure:
 
 ```
-grupa: {
+group: {
     allowed: "08:00-18:00",
     days: "Mon-Fri"
 }
@@ -300,21 +299,21 @@ backup: {
 }
 ```
 
-Zasady:
+Rules:
 
-· Jeśli grupa nie ma wpisu w /etc/permup.time → brak ograniczeń czasowych (domyślnie 24/7)
-· Jeśli grupa ma wpis → permupd sprawdza bieżący czas i dzień tygodnia
-· Jeśli aktualny czas mieści się w przedziale i dzień zgadza się → pozwala
-· Jeśli nie → odmawia z komunikatem: "Uprawnienia czasowe dla tej grupy nie są dostępne w tym momencie."
-· Jeśli użytkownik należy do wielu grup → którakolwiek grupa pozwala na dostęp w danym czasie → uprawnienie jest ważne
-· Root (-h root) ignoruje /etc/permup.time – ograniczenia czasowe nie są sprawdzane
+- If a group has no entry in `/etc/permup.time` → no time restrictions (default 24/7)
+- If a group has an entry → `permupd` checks the current time and day of the week
+- If the current time falls within the range and the day matches → allows
+- If not → denies with the message: "Time permissions for this group are not available at this moment."
+- If the user belongs to multiple groups → any group that allows access at the given time → permission is valid
+- Root (`-h root`) ignores `/etc/permup.time` – time restrictions are not checked
 
-4.5. /etc/permup.session – czas ważności hasła (po stronie klienta)
+### 4.5. `/etc/permup.session` – password validity time (client-side)
 
-Struktura:
+Structure:
 
 ```
-# Czas w sekundach
+# Time in seconds
 adm: {
     session_time: 600
 }
@@ -324,28 +323,28 @@ dev: {
 }
 ```
 
-Zasady:
+Rules:
 
-· session_time – czas w sekundach, przez który klient (permup lub permup-gui) pamięta hasło dla konkretnej pary (-h, -u) i wysyła je automatycznie przy kolejnych wywołaniach z tą samą parą
-· Jeśli grupa nie ma wpisu → za każdym razem pytaj o hasło (domyślnie: brak pamięci)
-· Jeśli session_time = 0 → wyłączone (zawsze pytaj)
-· Jeśli session_time > 0 → klient zapamiętuje hasło na ten czas (liczone od ostatniego uwierzytelnienia dla tej pary)
-· Każda para (-h, -u) ma własną, niezależną sesję
-· Zmiana pary (-h, -u) → stara sesja jest zamykana, otwierana jest nowa (po podaniu prawidłowego hasła dla nowej pary)
-· Działa wyłącznie po stronie klienta – permupd nie ma pojęcia o sesji
-· Root (-h root) nie korzysta z /etc/permup.session – zawsze pyta o hasło
-· Sesje są niezależne dla każdego użytkownika wywołującego – Iksiński i Kowalski mają własne, oddzielne zbiory sesji
+- `session_time` – time in seconds during which the client (`permup` or `permup-gui`) remembers the password for a specific pair `(-h, -u)` and sends it automatically on subsequent calls with the same pair
+- If the group has no entry → ask for the password every time (default: no memory)
+- If `session_time = 0` → disabled (always ask)
+- If `session_time > 0` → the client remembers the password for that time (counted from the last authentication for that pair)
+- Each pair `(-h, -u)` has its own independent session
+- Changing the pair `(-h, -u)` → old session is closed, a new one is opened (after providing the correct password for the new pair)
+- Works exclusively on the client side – `permupd` has no knowledge of the session
+- Root (`-h root`) does not use `/etc/permup.session` – always asks for the password
+- Sessions are independent for each calling user – X and Kowalski have their own separate sets of sessions
 
-4.6. /etc/permup/permup.session – rate limiting (po stronie klienta)
+### 4.6. `/etc/permup/permup.session` – rate limiting (client-side)
 
-Struktura:
+Structure:
 
 ```
-# Ustawienia domyślne
+# Default settings
 default_n: 3
 default_x: 30
 
-# Ustawienia dla konkretnych użytkowników (nadpisują default)
+# Settings for specific users (override defaults)
 marek {
     n: 5
     x: 60
@@ -357,162 +356,163 @@ janusz {
 }
 ```
 
-Zasady:
+Rules:
 
-· default_n – domyślna liczba nieudanych prób przed blokadą (dla wszystkich użytkowników)
-· default_x – domyślny czas blokady w sekundach (dla wszystkich użytkowników)
-· Ustawienia dla konkretnego użytkownika (np. marek { }) nadpisują wartości domyślne
-· n – liczba nieudanych prób uwierzytelnienia (hasło) przed zablokowaniem
-· x – czas w sekundach, przez który użytkownik jest blokowany po przekroczeniu n
-· Licznik jest resetowany po pomyślnym uwierzytelnieniu lub po upływie x
-· Dotyczy wyłącznie strony klienta – permupd nie ma pojęcia o blokadzie
-· Root (-h root) nie podlega rate limitingowi – zawsze może próbować
+- `default_n` – default number of failed attempts before lockout (for all users)
+- `default_x` – default lockout time in seconds (for all users)
+- Settings for a specific user (e.g., `marek { }`) override default values
+- `n` – number of failed authentication attempts (password) before lockout
+- `x` – time in seconds for which the user is locked after exceeding `n`
+- Counter is reset after successful authentication or after `x` expires
+- Applies exclusively on the client side – `permupd` has no knowledge of the lockout
+- Root (`-h root`) is not subject to rate limiting – can always try
 
-5. PRZEPŁYW DZIAŁANIA
+## 5. FLOW OF OPERATION
 
-5.1. Start systemu
+### 5.1. System startup
 
-1. Init uruchamia permupd jako root
-2. permupd otwiera /run/permup/socket (uprawnienia: 0600, tylko root)
-3. permupd wchodzi w pętlę nasłuchiwania
+1. Init starts `permupd` as root
+2. `permupd` opens `/run/permup/socket` (permissions: 0600, root only)
+3. `permupd` enters the listening loop
 
-5.2. Wywołanie przez użytkownika (CLI)
+### 5.2. Invocation by user (CLI)
 
-1. Użytkownik wpisuje: permup htop
-2. permup łączy się z /run/permup/socket
-3. permup wysyła żądanie list_users do permupd
-4. permupd sprawdza grupy użytkownika wywołującego i zwraca listę dozwolonych -u i -h
-5. permup sprawdza, czy podany -u (domyślnie root) i -h (domyślnie root) są dozwolone
-   · Jeśli -h root → pomija wszystkie sprawdzenia (ma wszystko)
-   · Jeśli -u niedozwolony → "Nie masz uprawnień jako [użytkownik]."
-   · Jeśli -h niedozwolony → "Nie masz uprawnień do uwierzytelniania jako [użytkownik]."
-   · Jeśli oba niedozwolone → "Nie masz uprawnień jako [użytkownik] ani do uwierzytelniania jako [użytkownik]."
-6. Jeśli OK → permup sprawdza rate limiting (/etc/permup/permup.session):
-   · Jeśli użytkownik jest zablokowany → wyświetla: "Zbyt wiele nieudanych prób. Spróbuj ponownie za Xs." i kończy
-   · Jeśli nie → przechodzi dalej
-7. permup sprawdza, czy -h to root:
-   · Jeśli tak → zawsze pyta o hasło roota (nie korzysta z /etc/permup.session)
-   · Jeśli nie → sprawdza /etc/permup.session dla pary (-h, -u):
-     · Jeśli sesja istnieje i nie wygasła → wysyła zapamiętane hasło automatycznie
-     · Jeśli sesja wygasła lub nie istnieje → pyta o hasło interaktywnie
-   · Zmiana pary (-h, -u) w stosunku do poprzedniego wywołania powoduje zamknięcie starej sesji i otwarcie nowej (po podaniu prawidłowego hasła)
-8. permup wysyła właściwe żądanie do permupd (z hasłem)
-9. permupd uwierzytelnia hasło (PAM, /etc/shadow)
-   · Jeśli hasło jest nieprawidłowe → klient zwiększa licznik nieudanych prób (rate limiting)
-   · Jeśli hasło jest prawidłowe → klient resetuje licznik nieudanych prób
-10. Jeśli OK → rodzic wykonuje fork()
-11. Rodzic wraca do nasłuchiwania
-12. Dziecko:
-    · Tworzy PTY (posix_openpt())
-    · Uruchamia runuser -l użytkownik_docelowy -c "htop; exit" na slave PTY
-    · Czyta z master PTY przez krótki czas (0,5–1s)
-    · Sprawdza, czy wyjście zawiera wzorzec z /etc/permup/shell.rc
-      · Jeśli -h root → pomija ten test
-      · Jeśli -h != root i wykryto wzorzec → zabija proces, zamyka PTY, zwraca błąd
-      · Jeśli nie wykryto → przechodzi do następnego kroku
-    · Próbuje nawiązać połączenie z terminalem wywoławczym
-    · Uruchamia timeout z /etc/permdown.cfg
-13. Jeśli połączenie zostanie nawiązane w czasie → sesja trwa
-14. Użytkownik korzysta z htopa jako użytkownik docelowy
-15. Po zamknięciu htopa:
-    · Dziecko kończy się (exit)
-    · Klient zamyka połączenie
-    · Rodzic czyści zasoby
+1. User types: `permup htop`
+2. `permup` connects to `/run/permup/socket`
+3. `permup` sends a `list_users` request to `permupd`
+4. `permupd` checks the groups of the calling user and returns the list of allowed `-u` and `-h`
+5. `permup` checks if the provided `-u` (default root) and `-h` (default root) are allowed
+   - If `-h root` → skips all checks (has everything)
+   - If `-u` not allowed → "You do not have permissions as [user]."
+   - If `-h` not allowed → "You do not have permissions to authenticate as [user]."
+   - If both not allowed → "You do not have permissions as [user] nor to authenticate as [user]."
+6. If OK → `permup` checks rate limiting (`/etc/permup/permup.session`):
+   - If the user is locked → displays: "Too many failed attempts. Try again in Xs." and exits
+   - If not → proceeds
+7. `permup` checks if `-h` is root:
+   - If yes → always asks for the root password (does not use `/etc/permup.session`)
+   - If no → checks `/etc/permup.session` for the pair `(-h, -u)`:
+     - If session exists and has not expired → sends the remembered password automatically
+     - If session expired or does not exist → asks for the password interactively
+   - Changing the pair `(-h, -u)` relative to the previous call causes the old session to be closed and a new one opened (after providing the correct password)
+8. `permup` sends the actual request to `permupd` (with the password)
+9. `permupd` authenticates the password (PAM, `/etc/shadow`)
+   - If the password is incorrect → the client increments the failed attempt counter (rate limiting)
+   - If the password is correct → the client resets the failed attempt counter
+10. If OK → the parent performs `fork()`
+11. Parent returns to listening
+12. Child:
+    - Creates PTY (`posix_openpt()`)
+    - Runs `runuser -l target_user -c "htop; exit"` on the slave PTY
+    - Reads from the master PTY for a short time (0.5–1s)
+    - Checks if the output contains a pattern from `/etc/permup/shell.rc`
+      - If `-h root` → skips this test
+      - If `-h != root` and pattern detected → kills the process, closes PTY, returns error
+      - If not detected → proceeds to the next step
+    - Attempts to establish a connection with the calling terminal
+    - Starts the timeout from `/etc/permdown.cfg`
+13. If connection is established within the timeout → session continues
+14. User uses `htop` as the target user
+15. After `htop` is closed:
+    - Child exits (`exit`)
+    - Client closes the connection
+    - Parent cleans up resources
 
-5.3. Wywołanie przez GUI
+### 5.3. Invocation via GUI
 
-1. Użytkownik uruchamia plik .desktop z Exec=permup-gui htop
-2. permup-gui łączy się z permupd i wysyła żądanie list_users
-3. permupd sprawdza grupy użytkownika wywołującego i zwraca listę dozwolonych -u i -h
-4. permup-gui wyświetla okno dialogowe z:
-   · Listą rozwijaną dla -u (tylko dozwoleni użytkownicy)
-   · Listą rozwijaną dla -h (tylko dozwoleni użytkownicy)
-   · Polem na hasło
-   · Przyciskiem OK/Anuluj
-5. Użytkownik wybiera, wpisuje hasło, zatwierdza
-6. permup-gui sprawdza rate limiting (/etc/permup/permup.session):
-   · Jeśli użytkownik jest zablokowany → wyświetla komunikat i kończy
-   · Jeśli nie → przechodzi dalej
-7. permup-gui sprawdza, czy -h to root:
-   · Jeśli tak → zawsze pyta o hasło roota (nie korzysta z /etc/permup.session)
-   · Jeśli nie → sprawdza /etc/permup.session dla pary (-h, -u):
-     · Jeśli sesja istnieje i nie wygasła → wysyła zapamiętane hasło automatycznie
-     · Jeśli sesja wygasła lub nie istnieje → pyta o hasło w oknie dialogowym
-   · Zmiana pary zamyka starą sesję i otwiera nową
-8. permup-gui wysyła właściwe żądanie do permupd (z wybranymi opcjami i hasłem)
-9. permupd uwierzytelnia, sprawdza uprawnienia, forkuje dziecko
-10. Dziecko tworzy PTY, uruchamia runuser -l użytkownik_docelowy -c "htop; exit"
-11. Dziecko czyta z master PTY i sprawdza wzorce z /etc/permup/shell.rc
-    · Jeśli -h root → pomija test
-    · Jeśli -h != root i wykryto wzorzec → zabija proces, zwraca błąd
-12. Próbuje nawiązać połączenie z terminalem wywoławczym
-13. Klient nie ma terminala, więc nie może nawiązać połączenia
-14. Timeout z /etc/permdown.cfg odlicza (np. 120s)
-15. Jeśli htop skończy się przed timeoutem → OK, wynik zwrócony
-16. Jeśli timeout minie → dziecko zabija htopa, kończy się, zwraca błąd
+1. User runs a `.desktop` file with `Exec=permup-gui htop`
+2. `permup-gui` connects to `permupd` and sends a `list_users` request
+3. `permupd` checks the groups of the calling user and returns the list of allowed `-u` and `-h`
+4. `permup-gui` displays a dialog window with:
+   - A dropdown list for `-u` (only allowed users)
+   - A dropdown list for `-h` (only allowed users)
+   - A password field
+   - OK/Cancel button
+5. User selects, types the password, confirms
+6. `permup-gui` checks rate limiting (`/etc/permup/permup.session`):
+   - If the user is locked → displays a message and exits
+   - If not → proceeds
+7. `permup-gui` checks if `-h` is root:
+   - If yes → always asks for the root password (does not use `/etc/permup.session`)
+   - If no → checks `/etc/permup.session` for the pair `(-h, -u)`:
+     - If session exists and has not expired → sends the remembered password automatically
+     - If session expired or does not exist → asks for the password in the dialog window
+   - Changing the pair closes the old session and opens a new one
+8. `permup-gui` sends the actual request to `permupd` (with the selected options and password)
+9. `permupd` authenticates, checks permissions, forks the child
+10. Child creates PTY, runs `runuser -l target_user -c "htop; exit"`
+11. Child reads from the master PTY and checks patterns from `/etc/permup/shell.rc`
+    - If `-h root` → skips the test
+    - If `-h != root` and pattern detected → kills the process, returns error
+12. Attempts to establish a connection with the calling terminal
+13. Client has no terminal, so it cannot establish a connection
+14. Timeout from `/etc/permdown.cfg` counts down (e.g., 120s)
+15. If `htop` finishes before the timeout → OK, result returned
+16. If timeout expires → child kills `htop`, exits, returns error
 
-5.4. PTY i timeout – jedna faza
+### 5.4. PTY and timeout – one phase
 
-· Tylko jedna faza: nawiązanie połączenia z terminalem wywoławczym
-· Timeout obowiązuje od momentu uruchomienia komendy do nawiązania połączenia zwrotnego
-· Jeśli połączenie zostanie nawiązane → sesja trwa do zamknięcia komendy
-· Jeśli nie → po czasie timeout komenda jest zabijana
-· Oneshot również działa przez PTY – nie ma osobnego trybu bez PTY
+- Only one phase: establishing a connection with the calling terminal
+- Timeout applies from the moment the command is started until the return connection is established
+- If connection is established → session continues until the command is closed
+- If not → after the timeout, the command is killed
+- Oneshot also works through PTY – there is no separate mode without PTY
 
-5.5. Blokada powłok (shell block)
+### 5.5. Shell blocking
 
-· Cel: uniemożliwić uruchamianie powłok (bash, sh, zsh, fish, mc itp.) gdy -h != root i -u == root
-· Metoda: dziecko czyta wyjście z PTY i sprawdza wzorce z /etc/permup/shell.rc
-· Wyjątek: -h root → pomijamy test (root może uruchamiać powłoki)
-· Odporność: metoda działa niezależnie od nazwy pliku, dowiązań symbolicznych, kopii binarek – ponieważ wykrywa zachowanie (prompt), a nie nazwę
+- **Purpose:** to prevent running shells (bash, sh, zsh, fish, mc, etc.) when `-h != root` and `-u == root`
+- **Method:** child reads the PTY output and checks patterns from `/etc/permup/shell.rc`
+- **Exception:** `-h root` → skip the test (root can run shells)
+- **Robustness:** the method works independently of the filename, symbolic links, binary copies – because it detects behavior (prompt), not the name
 
-5.6. Lista użytkowników (list_users)
+### 5.6. User list (`list_users`)
 
-· permupd udostępnia żądanie list_users, które dla danego użytkownika wywołującego zwraca:
-  · Listę dozwolonych użytkowników docelowych (-u)
-  · Listę dozwolonych użytkowników uwierzytelniających (-h)
-· Jeśli -h root → zwraca wszystkich użytkowników systemowych
-· permup (CLI):
-  · Pobiera listę w tle (bez wyświetlania) przed każdym wywołaniem
-  · Sprawdza, czy podany -u i -h są dozwolone
-  · Jeśli nie → wyświetla odpowiedni komunikat błędu
-  · permup -l → wyświetla listę jawnie
-· permup-gui (GUI):
-  · Pobiera listę i na jej podstawie buduje okno dialogowe z listami rozwijanymi
+- `permupd` provides a `list_users` request, which for a given calling user returns:
+  - List of allowed target users (`-u`)
+  - List of allowed authenticating users (`-h`)
+- If `-h root` → returns all system users
+- `permup` (CLI):
+  - Retrieves the list in the background (without displaying) before each call
+  - Checks if the provided `-u` and `-h` are allowed
+  - If not → displays the appropriate error message
+  - `permup -l` → displays the list explicitly
+- `permup-gui` (GUI):
+  - Retrieves the list and builds the dialog window with dropdown lists based on it
 
-5.7. Sesja dla pary (-h, -u)
+### 5.7. Session for the pair `(-h, -u)`
 
-· Sesja jest przypisana do konkretnej pary (użytkownik uwierzytelniający -h, użytkownik docelowy -u)
-· Każda para ma własny, niezależny licznik czasu (zgodnie z /etc/permup.session)
-· Jeśli użytkownik wywoła permup z tą samą parą i sesja nie wygasła → hasło wysyłane automatycznie
-· Jeśli użytkownik wywoła permup z inną parą → stara sesja jest zamykana, otwierana jest nowa (po podaniu prawidłowego hasła)
-· Sesje są niezależne dla każdego użytkownika wywołującego – Iksiński i Kowalski mają własne, oddzielne zbiory sesji
-· Root (-h root) nie korzysta z sesji – zawsze pyta o hasło
+- Session is assigned to a specific pair (authenticating user `-h`, target user `-u`)
+- Each pair has its own independent timer (according to `/etc/permup.session`)
+- If the user calls `permup` with the same pair and the session has not expired → password sent automatically
+- If the user calls `permup` with a different pair → old session is closed, a new one is opened (after providing the correct password)
+- Sessions are independent for each calling user – X and Kowalski have their own separate sets of sessions
+- Root (`-h root`) does not use sessions – always asks for the password
 
-5.8. Rate limiting (blokada po nieudanych próbach)
+### 5.8. Rate limiting (lockout after failed attempts)
 
-· Cel: zabezpieczenie przed atakami brute-force
-· Metoda: klient liczy nieudane próby uwierzytelnienia dla każdego użytkownika
-· Jeśli licznik osiągnie n (z /etc/permup/permup.session), użytkownik jest blokowany na x sekund
-· Komunikat: "Zbyt wiele nieudanych prób. Spróbuj ponownie za Xs."
-· Licznik resetuje się po pomyślnym uwierzytelnieniu lub po upływie x
-· Root (-h root) nie podlega rate limitingowi
+- **Purpose:** protection against brute-force attacks
+- **Method:** client counts failed authentication attempts for each user
+- If the counter reaches `n` (from `/etc/permup/permup.session`), the user is locked for `x` seconds
+- Message: "Too many failed attempts. Try again in Xs."
+- Counter resets after successful authentication or after `x` expires
+- Root (`-h root`) is not subject to rate limiting
 
-6. BEZPIECZEŃSTWO
+## 6. SECURITY
 
-1. permupd działa jako root, ale nie wykonuje komend – tylko forkuje dzieci
-2. Dzieci wykonują komendy przez runuser (bezpieczne przełączanie użytkownika)
-3. Dziecko dziedziczy uprawnienia roota TYLKO wtedy, gdy uwierzytelnienie odbyło się hasłem roota (-h root). W przeciwnym razie dziedziczy uprawnienia użytkownika uwierzytelniającego.
-4. permup nie ma SUID – nie działa z podniesionymi uprawnieniami
-5. Gniazdo Unix ma uprawnienia 0600 – tylko root może się łączyć (lub grupa permup)
-6. PTY tworzone przez dzieci, przekazywane przez SCM_RIGHTS – bezpieczne
-7. Timeout zabija wiszące procesy – brak zombie
-8. Hasła nie są przechowywane – tylko weryfikowane przez PAM
-9. GUI nie może przejąć PTY – brak ryzyka przejęcia terminala przez niepowołane procesy
-10. Zawsze ; exit – gwarantuje zamknięcie sesji po komendzie
-11. Root ma wszystko – nie podlega configowi, co zapobiega przypadkowemu zablokowaniu dostępu
-12. Hasło zawsze interaktywnie – brak możliwości podania hasła w linii poleceń (bezpieczniej)
-13. Blokada powłok – uniemożliwia uruchamianie powłok z nie-rootowskim uwierzytelnieniem
-14. Weryfikacja przez PTY – niezawodna, odporna na dowiązania symboliczne i kopie binarek
-15. Ograniczenia czasowe – dodatkowa warstwa zabezpieczeń (ignorowana przez roota)
-16. Blokady uż
+1. `permupd` runs as root, but does not execute commands – only forks children
+2. Children execute commands via `runuser` (secure user switching)
+3. Child inherits root privileges ONLY when authentication was performed with the root password (`-h root`). Otherwise, it inherits the privileges of the authenticating user.
+4. `permup` does not have SUID – does not run with elevated privileges
+5. Unix socket has permissions 0600 – only root can connect (or the `permup` group)
+6. PTYs created by children, passed via `SCM_RIGHTS` – secure
+7. Timeout kills hanging processes – no zombies
+8. Passwords are not stored – only verified via PAM
+9. GUI cannot take over PTY – no risk of terminal takeover by unauthorized processes
+10. Always `; exit` – guarantees session closure after the command
+11. Root has everything – not subject to config, preventing accidental access lockout
+12. Password always interactive – no way to provide the password on the command line (safer)
+13. Shell blocking – prevents running shells with non-root authentication
+14. PTY-based verification – reliable, resistant to symbolic links and binary copies
+15. Time restrictions – additional security layer (ignored by root)
+16. User locks (`blocked_users` / `allowed_users`) – fine-grained control over which target users can be used
+17. Rate limiting – protection against password brute-forcing
