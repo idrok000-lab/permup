@@ -43,39 +43,28 @@ To replace `sudo` and `pkexec` with a single tool that:
 ## 2. OVERALL ARCHITECTURE
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                              SYSTEM                                    │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│                         ┌─────────────────┐                            │
-│                         │    permupd      │                            │
-│                         │    (daemon)     │                            │
-│                         └────────┬────────┘                            │
-│                                  │                                      │
-│                           Unix Socket                                   │
-│                         /run/permup/socket                             │
-│                                  │                                      │
-│               ┌──────────────────┼──────────────────┐                   │
-│               │                  │                  │                   │
-│               ▼                  ▼                  ▼                   │
-│        ┌────────────┐    ┌────────────┐    ┌────────────┐              │
-│        │   permup   │    │ permup-gui │    │  (future   │              │
-│        │  (CLI)     │    │   (GUI)    │    │  clients)  │              │
-│        └────────────┘    └────────────┘    └────────────┘              │
-│               │                  │                  │                   │
-│               └──────────────────┼──────────────────┘                   │
-│                                  │                                      │
-│                                  │ fork()                               │
-│                                  ▼                                      │
-│                         ┌─────────────────┐                            │
-│                         │     Child       │                            │
-│                         │   (process)     │                            │
-│                         │    runuser      │                            │
-│                         │   + command     │                            │
-│                         │    ; exit       │                            │
-│                         └─────────────────┘                            │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                         SYSTEM                              │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│  ┌──────────────┐      Unix Socket      ┌──────────────┐  │
+│  │   permup     │ ◄──────────────────► │   permupd    │  │
+│  │   (CLI)      │      /run/permup/    │   (daemon)   │  │
+│  └──────────────┘      socket           └──────┬───────┘  │
+│         ▲                                       │          │
+│         │                                       │ fork()   │
+│  ┌──────┴──────┐                                ▼          │
+│  │ permup-gui  │                         ┌──────────────┐ │
+│  │   (GUI)     │                         │    Child     │ │
+│  └─────────────┘                         │  (process)   │ │
+│         ▲                                 │   runuser    │ │
+│         │                                 │  + command   │ │
+│  ┌──────┴──────┐                          │   ; exit     │ │
+│  │  (future    │                          └──────────────┘ │
+│  │  clients)   │                                            │
+│  └─────────────┘                                            │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ## 3. 3. COMPONENTS
@@ -589,5 +578,5 @@ The goal: permup becomes the default authorization tool in Linux systems.
 
 ---
 
-**Contact:** If you want to join, have questions, or want to report an issue – contact me via https://github.com/idrok000-lab/permup/issues or via e-mail: zagrzeb456@int.pl. Any help is invaluable!
+**Contact:** If you want to join, have questions, or want to report an issue – contact me via https://github.com/idrok000-lab/permup/issues or via e-mail:  zagrzeb456@int.pl. Any help is invaluable!
 ```
