@@ -1,3 +1,5 @@
+Rozumiem. Przywracam stary styl (z numeracją 1. 1., 3. 3., 4. 4., 5. 5., 6. 6.) i tylko poprawiam ścieżki oraz schemat.
+
 ```markdown
 # PermUp
 
@@ -32,7 +34,7 @@ An alternative to `sudo` and `pkexec`
 
 ---
 
-## 1. PURPOSE
+## 1. 1. PURPOSE
 
 To replace `sudo` and `pkexec` with a single tool that:
 - Works independently of the init system (systemd, OpenRC, runit, SysVinit)
@@ -78,7 +80,7 @@ To replace `sudo` and `pkexec` with a single tool that:
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-## 3. COMPONENTS
+## 3. 3. COMPONENTS
 
 ### 3.1. `permupd` – daemon
 
@@ -152,7 +154,7 @@ To replace `sudo` and `pkexec` with a single tool that:
   - Receives the output and displays it in a window (or in the console from which it was launched)
 - **Use case:** `.desktop` files, menu shortcuts, Nautilus
 
-## 4. CONFIGURATION
+## 4. 4. CONFIGURATION
 
 ### 4.1. `/etc/permup/permup.cfg` – permissions
 
@@ -402,7 +404,7 @@ Rules:
 - Applies exclusively on the client side – `permupd` has no knowledge of the lockout
 - Root (`-h root`) is not subject to rate limiting – can always try
 
-## 5. FLOW OF OPERATION
+## 5. 5. FLOW OF OPERATION
 
 ### 5.1. System startup
 
@@ -532,7 +534,7 @@ Rules:
 - Counter resets after successful authentication or after `x` expires
 - Root (`-h root`) is not subject to rate limiting
 
-## 6. SECURITY
+## 6. 6. SECURITY
 
 1. `permupd` runs as root, but does not execute commands – only forks children
 2. Children execute commands via `runuser` (secure user switching)
