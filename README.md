@@ -1,4 +1,4 @@
-# PERMUP
+# PermUp
 
 An alternative to `sudo` and `pkexec`
 
