@@ -1,0 +1,14 @@
+adm: {
+    allowed: "08:00-18:00",
+    days: "Mon-Fri"
+}
+
+dev: {
+    allowed: "10:00-16:00",
+    days: "Mon-Fri"
+}
+
+backup: {
+    allowed: "00:00-23:59",
+    days: "Mon-Sun"
+}

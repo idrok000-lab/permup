@@ -1,0 +1,14 @@
+# Default settings
+default_n: 3
+default_x: 30
+
+# Per-user settings (override defaults)
+marek {
+    n: 5
+    x: 60
+}
+
+janusz {
+    n: 2
+    x: 10
+}
