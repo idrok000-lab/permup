@@ -1,4 +1,3 @@
-```markdown
 # PermUp
 
 An alternative to `sudo` and `pkexec`
@@ -32,7 +31,7 @@ An alternative to `sudo` and `pkexec`
 
 ---
 
-## 1. 1. PURPOSE
+## 1. PURPOSE
 
 To replace `sudo` and `pkexec` with a single tool that:
 - Works independently of the init system (systemd, OpenRC, runit, SysVinit)
@@ -69,7 +68,7 @@ To replace `sudo` and `pkexec` with a single tool that:
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## 3. 3. COMPONENTS
+## 3. COMPONENTS
 
 ### 3.1. `permupd` – daemon
 
@@ -101,8 +100,8 @@ To replace `sudo` and `pkexec` with a single tool that:
     - If the user is locked → displays a message and exits
     - If not → proceeds
   - Checks if `-h` is **root**
-    - If **yes** → **always asks for the root password** (does not use `/etc/permup/permup.session`)
-    - If **no** → checks if a valid session exists for the pair `(-h, -u)` (according to `/etc/permup/permup.session`)
+    - If **yes** → **always asks for the root password** (does not use `/etc/permup.session`)
+    - If **no** → checks if a valid session exists for the pair `(-h, -u)` (according to `/etc/permup.session`)
       - If yes → sends the remembered password automatically
       - If no → asks for the password interactively
   - Sends the actual request to the daemon
@@ -135,7 +134,7 @@ To replace `sudo` and `pkexec` with a single tool that:
     - If the user is locked → displays a message and exits
     - If not → proceeds
   - Checks if `-h` is root
-    - If yes → always asks for the root password (does not use `/etc/permup/permup.session`)
+    - If yes → always asks for the root password (does not use `/etc/permup.session`)
     - If no → checks if a valid session exists for the pair `(-h, -u)`
       - If yes → sends the remembered password automatically
       - If no → asks for the password in the dialog window
@@ -143,7 +142,7 @@ To replace `sudo` and `pkexec` with a single tool that:
   - Receives the output and displays it in a window (or in the console from which it was launched)
 - **Use case:** `.desktop` files, menu shortcuts, Nautilus
 
-## 4. 4. CONFIGURATION
+## 4. CONFIGURATION
 
 ### 4.1. `/etc/permup/permup.cfg` – permissions
 
@@ -358,7 +357,7 @@ Rules:
 - Each pair `(-h, -u)` has its own independent session
 - Changing the pair `(-h, -u)` → old session is closed, a new one is opened (after providing the correct password for the new pair)
 - Works exclusively on the client side – `permupd` has no knowledge of the session
-- Root (`-h root`) does not use `/etc/permup/permup.session` – always asks for the password
+- Root (`-h root`) does not use `/etc/permup.session` – always asks for the password
 - Sessions are independent for each calling user – X and Kowalski have their own separate sets of sessions
 
 ### 4.6. `/etc/permup/permup.ratelimit` – rate limiting (client-side)
@@ -393,7 +392,7 @@ Rules:
 - Applies exclusively on the client side – `permupd` has no knowledge of the lockout
 - Root (`-h root`) is not subject to rate limiting – can always try
 
-## 5. 5. FLOW OF OPERATION
+## 5. FLOW OF OPERATION
 
 ### 5.1. System startup
 
@@ -416,8 +415,8 @@ Rules:
    - If the user is locked → displays: "Too many failed attempts. Try again in Xs." and exits
    - If not → proceeds
 7. `permup` checks if `-h` is root:
-   - If yes → always asks for the root password (does not use `/etc/permup/permup.session`)
-   - If no → checks `/etc/permup/permup.session` for the pair `(-h, -u)`:
+   - If yes → always asks for the root password (does not use `/etc/permup.session`)
+   - If no → checks `/etc/permup.session` for the pair `(-h, -u)`:
      - If session exists and has not expired → sends the remembered password automatically
      - If session expired or does not exist → asks for the password interactively
    - Changing the pair `(-h, -u)` relative to the previous call causes the old session to be closed and a new one opened (after providing the correct password)
@@ -459,8 +458,8 @@ Rules:
    - If the user is locked → displays a message and exits
    - If not → proceeds
 7. `permup-gui` checks if `-h` is root:
-   - If yes → always asks for the root password (does not use `/etc/permup/permup.session`)
-   - If no → checks `/etc/permup/permup.session` for the pair `(-h, -u)`:
+   - If yes → always asks for the root password (does not use `/etc/permup.session`)
+   - If no → checks `/etc/permup.session` for the pair `(-h, -u)`:
      - If session exists and has not expired → sends the remembered password automatically
      - If session expired or does not exist → asks for the password in the dialog window
    - Changing the pair closes the old session and opens a new one
@@ -508,7 +507,7 @@ Rules:
 ### 5.7. Session for the pair `(-h, -u)`
 
 - Session is assigned to a specific pair (authenticating user `-h`, target user `-u`)
-- Each pair has its own independent timer (according to `/etc/permup/permup.session`)
+- Each pair has its own independent timer (according to `/etc/permup.session`)
 - If the user calls `permup` with the same pair and the session has not expired → password sent automatically
 - If the user calls `permup` with a different pair → old session is closed, a new one is opened (after providing the correct password)
 - Sessions are independent for each calling user – X and Kowalski have their own separate sets of sessions
@@ -523,7 +522,7 @@ Rules:
 - Counter resets after successful authentication or after `x` expires
 - Root (`-h root`) is not subject to rate limiting
 
-## 6. 6. SECURITY
+## 6. SECURITY
 
 1. `permupd` runs as root, but does not execute commands – only forks children
 2. Children execute commands via `runuser` (secure user switching)
@@ -581,4 +580,3 @@ The goal: permup becomes the default authorization tool in Linux systems.
 ---
 
 **Contact:** If you want to join, have questions, or want to report an issue – contact me via https://github.com/idrok000-lab/permup/issues or via e-mail:  zagrzeb456@int.pl. Any help is invaluable!
-```
