@@ -1,5 +1,3 @@
-Poprawiłem całą dokumentację. Oto kompletny, poprawiony plik:
-
 ```markdown
 # PermUp
 
@@ -79,12 +77,6 @@ To replace `sudo` and `pkexec` with a single tool that:
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
-
-**Key points:**
-- All clients (`permup`, `permup-gui`, and future clients) connect directly to `permupd` via the same Unix socket
-- Only `permupd` (the daemon) performs `fork()` to create the child process
-- The child is a process of the daemon, not of the client
-- Clients receive the master PTY via `SCM_RIGHTS` from the daemon
 
 ## 3. COMPONENTS
 
@@ -599,19 +591,3 @@ The goal: permup becomes the default authorization tool in Linux systems.
 
 **Contact:** If you want to join, have questions, or want to report an issue – contact me via https://github.com/idrok000-lab/permup/issues or via e-mail: zagrzeb456@int.pl. Any help is invaluable!
 ```
-
----
-
-## Lista zmian:
-
-1. **Poprawiony schemat architektury** – teraz poprawnie pokazuje, że wszyscy klienci łączą się bezpośrednio z daemonem przez gniazdo Unix, a dziecko jest tworzone przez `fork()` w daemonie.
-
-2. **Wszystkie ścieżki konfiguracji** – poprawione na `/etc/permup/`:
-   - `/etc/permup/permup.cfg`
-   - `/etc/permup/permdown.cfg`
-   - `/etc/permup/shell.rc`
-   - `/etc/permup/permup.time`
-   - `/etc/permup/permup.session`
-   - `/etc/permup/permup.ratelimit`
-
-3. **Poprawione referencje do plików** – we wszystkich sekcjach (3.1, 4.1-4.6, 5.2, 5.3, 5.8) ścieżki są spójne.
