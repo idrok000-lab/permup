@@ -1,5 +1,3 @@
-Rozumiem. Przywracam stary styl (z numeracją 1. 1., 3. 3., 4. 4., 5. 5., 6. 6.) i tylko poprawiam ścieżki oraz schemat.
-
 ```markdown
 # PermUp
 
