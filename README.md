@@ -1,3 +1,6 @@
+Poprawiłem całą dokumentację. Oto kompletny, poprawiony plik:
+
+```markdown
 # PermUp
 
 An alternative to `sudo` and `pkexec`
@@ -42,31 +45,46 @@ To replace `sudo` and `pkexec` with a single tool that:
 ## 2. OVERALL ARCHITECTURE
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                         SYSTEM                              │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  ┌──────────────┐                             ┌───────────┐ │
-│  │    permup    │ ──────────────────────────┐ │  permupd  │ │
-│  │   (client)   │                           │ │  (daemon) │ │
-│  └──────────────┘                           │ └─────┬─────┘ │
-│                                             │       │       │
-│                                       Unix Socket   │       │
-│                                      /run/permup/   │       │
-│  ┌──────────────┐                           │       │       │
-│  │  permup-gui  │ ──────────────────────────┘       │       │
-│  │   (client)   │                                   │       │
-│  └──────────────┘                                   │       │
-│                                              ┌──────▼─────┐ │
-│                                              │   Child    │ │
-│                                              │ (process)  │ │
-│                                              │  runuser   │ │
-│                                              │ + command  │ │
-│                                              │  ; exit    │ │
-│                                              └────────────┘ │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────┐
+│                              SYSTEM                                    │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│                         ┌─────────────────┐                            │
+│                         │    permupd      │                            │
+│                         │    (daemon)     │                            │
+│                         └────────┬────────┘                            │
+│                                  │                                      │
+│                           Unix Socket                                   │
+│                         /run/permup/socket                             │
+│                                  │                                      │
+│               ┌──────────────────┼──────────────────┐                   │
+│               │                  │                  │                   │
+│               ▼                  ▼                  ▼                   │
+│        ┌────────────┐    ┌────────────┐    ┌────────────┐              │
+│        │   permup   │    │ permup-gui │    │  (future   │              │
+│        │  (CLI)     │    │   (GUI)    │    │  clients)  │              │
+│        └────────────┘    └────────────┘    └────────────┘              │
+│               │                  │                  │                   │
+│               └──────────────────┼──────────────────┘                   │
+│                                  │                                      │
+│                                  │ fork()                               │
+│                                  ▼                                      │
+│                         ┌─────────────────┐                            │
+│                         │     Child       │                            │
+│                         │   (process)     │                            │
+│                         │    runuser      │                            │
+│                         │   + command     │                            │
+│                         │    ; exit       │                            │
+│                         └─────────────────┘                            │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
 ```
+
+**Key points:**
+- All clients (`permup`, `permup-gui`, and future clients) connect directly to `permupd` via the same Unix socket
+- Only `permupd` (the daemon) performs `fork()` to create the child process
+- The child is a process of the daemon, not of the client
+- Clients receive the master PTY via `SCM_RIGHTS` from the daemon
 
 ## 3. COMPONENTS
 
@@ -79,12 +97,12 @@ To replace `sudo` and `pkexec` with a single tool that:
 - **New request:** `list_users` – returns the list of allowed `-u` and `-h` for the given user
 - **Rule for root:** If `-h root` → **skip all checks** (permissions, time, locks, shells)
 - **Configuration files:**
-  - `/etc/permup.cfg` – permissions (groups, lists, user locks)
-  - `/etc/permdown.cfg` – timeouts for commands
+  - `/etc/permup/permup.cfg` – permissions (groups, lists, user locks)
+  - `/etc/permup/permdown.cfg` – timeouts for commands
   - `/etc/permup/shell.rc` – shell prompt patterns
-  - `/etc/permup.time` – time restrictions for groups
-  - `/etc/permup.session` – password validity time (client-side)
-  - `/etc/permup/permup.session` – rate limiting (client-side)
+  - `/etc/permup/permup.time` – time restrictions for groups
+  - `/etc/permup/permup.session` – password validity time (client-side)
+  - `/etc/permup/permup.ratelimit` – rate limiting (client-side)
 
 ### 3.2. `permup` – CLI client
 
@@ -96,12 +114,12 @@ To replace `sudo` and `pkexec` with a single tool that:
   - Receives the list of allowed `-u` and `-h`
   - Checks if the provided `-u` and `-h` are allowed
   - If not → displays the appropriate error message
-  - If yes → checks rate limiting (`/etc/permup/permup.session`)
+  - If yes → checks rate limiting (`/etc/permup/permup.ratelimit`)
     - If the user is locked → displays a message and exits
     - If not → proceeds
   - Checks if `-h` is **root**
-    - If **yes** → **always asks for the root password** (does not use `/etc/permup.session`)
-    - If **no** → checks if a valid session exists for the pair `(-h, -u)` (according to `/etc/permup.session`)
+    - If **yes** → **always asks for the root password** (does not use `/etc/permup/permup.session`)
+    - If **no** → checks if a valid session exists for the pair `(-h, -u)` (according to `/etc/permup/permup.session`)
       - If yes → sends the remembered password automatically
       - If no → asks for the password interactively
   - Sends the actual request to the daemon
@@ -130,11 +148,11 @@ To replace `sudo` and `pkexec` with a single tool that:
     - A dropdown list for `-h` (only allowed users)
     - A password field
     - OK/Cancel button
-  - After confirmation, checks rate limiting (`/etc/permup/permup.session`)
+  - After confirmation, checks rate limiting (`/etc/permup/permup.ratelimit`)
     - If the user is locked → displays a message and exits
     - If not → proceeds
   - Checks if `-h` is root
-    - If yes → always asks for the root password (does not use `/etc/permup.session`)
+    - If yes → always asks for the root password (does not use `/etc/permup/permup.session`)
     - If no → checks if a valid session exists for the pair `(-h, -u)`
       - If yes → sends the remembered password automatically
       - If no → asks for the password in the dialog window
@@ -144,7 +162,7 @@ To replace `sudo` and `pkexec` with a single tool that:
 
 ## 4. CONFIGURATION
 
-### 4.1. `/etc/permup.cfg` – permissions
+### 4.1. `/etc/permup/permup.cfg` – permissions
 
 Structure:
 
@@ -248,10 +266,10 @@ Users without groups:
 
 Root user:
 
-- Not subject to `/etc/permup.cfg`
+- Not subject to `/etc/permup/permup.cfg`
 - Has all permissions by default – can execute any command as any user
 
-### 4.2. `/etc/permdown.cfg` – timeouts
+### 4.2. `/etc/permup/permdown.cfg` – timeouts
 
 Structure:
 
@@ -303,7 +321,7 @@ Rules:
 - Admin can add their own patterns (e.g., `[admin@`, `(venv)`)
 - Root (`-h root`) skips this test – can run shells without restrictions
 
-### 4.4. `/etc/permup.time` – time restrictions
+### 4.4. `/etc/permup/permup.time` – time restrictions
 
 Structure:
 
@@ -326,14 +344,14 @@ backup: {
 
 Rules:
 
-- If a group has no entry in `/etc/permup.time` → no time restrictions (default 24/7)
+- If a group has no entry in `/etc/permup/permup.time` → no time restrictions (default 24/7)
 - If a group has an entry → `permupd` checks the current time and day of the week
 - If the current time falls within the range and the day matches → allows
 - If not → denies with the message: "Time permissions for this group are not available at this moment."
 - If the user belongs to multiple groups → any group that allows access at the given time → permission is valid
-- Root (`-h root`) ignores `/etc/permup.time` – time restrictions are not checked
+- Root (`-h root`) ignores `/etc/permup/permup.time` – time restrictions are not checked
 
-### 4.5. `/etc/permup.session` – password validity time (client-side)
+### 4.5. `/etc/permup/permup.session` – password validity time (client-side)
 
 Structure:
 
@@ -357,10 +375,10 @@ Rules:
 - Each pair `(-h, -u)` has its own independent session
 - Changing the pair `(-h, -u)` → old session is closed, a new one is opened (after providing the correct password for the new pair)
 - Works exclusively on the client side – `permupd` has no knowledge of the session
-- Root (`-h root`) does not use `/etc/permup.session` – always asks for the password
+- Root (`-h root`) does not use `/etc/permup/permup.session` – always asks for the password
 - Sessions are independent for each calling user – X and Kowalski have their own separate sets of sessions
 
-### 4.6. `/etc/permup/permup.session` – rate limiting (client-side)
+### 4.6. `/etc/permup/permup.ratelimit` – rate limiting (client-side)
 
 Structure:
 
@@ -411,12 +429,12 @@ Rules:
    - If `-u` not allowed → "You do not have permissions as [user]."
    - If `-h` not allowed → "You do not have permissions to authenticate as [user]."
    - If both not allowed → "You do not have permissions as [user] nor to authenticate as [user]."
-6. If OK → `permup` checks rate limiting (`/etc/permup/permup.session`):
+6. If OK → `permup` checks rate limiting (`/etc/permup/permup.ratelimit`):
    - If the user is locked → displays: "Too many failed attempts. Try again in Xs." and exits
    - If not → proceeds
 7. `permup` checks if `-h` is root:
-   - If yes → always asks for the root password (does not use `/etc/permup.session`)
-   - If no → checks `/etc/permup.session` for the pair `(-h, -u)`:
+   - If yes → always asks for the root password (does not use `/etc/permup/permup.session`)
+   - If no → checks `/etc/permup/permup.session` for the pair `(-h, -u)`:
      - If session exists and has not expired → sends the remembered password automatically
      - If session expired or does not exist → asks for the password interactively
    - Changing the pair `(-h, -u)` relative to the previous call causes the old session to be closed and a new one opened (after providing the correct password)
@@ -435,7 +453,7 @@ Rules:
       - If `-h != root` and pattern detected → kills the process, closes PTY, returns error
       - If not detected → proceeds to the next step
     - Attempts to establish a connection with the calling terminal
-    - Starts the timeout from `/etc/permdown.cfg`
+    - Starts the timeout from `/etc/permup/permdown.cfg`
 13. If connection is established within the timeout → session continues
 14. User uses `htop` as the target user
 15. After `htop` is closed:
@@ -454,12 +472,12 @@ Rules:
    - A password field
    - OK/Cancel button
 5. User selects, types the password, confirms
-6. `permup-gui` checks rate limiting (`/etc/permup/permup.session`):
+6. `permup-gui` checks rate limiting (`/etc/permup/permup.ratelimit`):
    - If the user is locked → displays a message and exits
    - If not → proceeds
 7. `permup-gui` checks if `-h` is root:
-   - If yes → always asks for the root password (does not use `/etc/permup.session`)
-   - If no → checks `/etc/permup.session` for the pair `(-h, -u)`:
+   - If yes → always asks for the root password (does not use `/etc/permup/permup.session`)
+   - If no → checks `/etc/permup/permup.session` for the pair `(-h, -u)`:
      - If session exists and has not expired → sends the remembered password automatically
      - If session expired or does not exist → asks for the password in the dialog window
    - Changing the pair closes the old session and opens a new one
@@ -471,7 +489,7 @@ Rules:
     - If `-h != root` and pattern detected → kills the process, returns error
 12. Attempts to establish a connection with the calling terminal
 13. Client has no terminal, so it cannot establish a connection
-14. Timeout from `/etc/permdown.cfg` counts down (e.g., 120s)
+14. Timeout from `/etc/permup/permdown.cfg` counts down (e.g., 120s)
 15. If `htop` finishes before the timeout → OK, result returned
 16. If timeout expires → child kills `htop`, exits, returns error
 
@@ -507,7 +525,7 @@ Rules:
 ### 5.7. Session for the pair `(-h, -u)`
 
 - Session is assigned to a specific pair (authenticating user `-h`, target user `-u`)
-- Each pair has its own independent timer (according to `/etc/permup.session`)
+- Each pair has its own independent timer (according to `/etc/permup/permup.session`)
 - If the user calls `permup` with the same pair and the session has not expired → password sent automatically
 - If the user calls `permup` with a different pair → old session is closed, a new one is opened (after providing the correct password)
 - Sessions are independent for each calling user – X and Kowalski have their own separate sets of sessions
@@ -517,7 +535,7 @@ Rules:
 
 - **Purpose:** protection against brute-force attacks
 - **Method:** client counts failed authentication attempts for each user
-- If the counter reaches `n` (from `/etc/permup/permup.session`), the user is locked for `x` seconds
+- If the counter reaches `n` (from `/etc/permup/permup.ratelimit`), the user is locked for `x` seconds
 - Message: "Too many failed attempts. Try again in Xs."
 - Counter resets after successful authentication or after `x` expires
 - Root (`-h root`) is not subject to rate limiting
@@ -579,4 +597,21 @@ The goal: permup becomes the default authorization tool in Linux systems.
 
 ---
 
-**Contact:** If you want to join, have questions, or want to report an issue – contact me via https://github.com/idrok000-lab/permup/issues or via e-mail:  zagrzeb456@int.pl. Any help is invaluable!
+**Contact:** If you want to join, have questions, or want to report an issue – contact me via https://github.com/idrok000-lab/permup/issues or via e-mail: zagrzeb456@int.pl. Any help is invaluable!
+```
+
+---
+
+## Lista zmian:
+
+1. **Poprawiony schemat architektury** – teraz poprawnie pokazuje, że wszyscy klienci łączą się bezpośrednio z daemonem przez gniazdo Unix, a dziecko jest tworzone przez `fork()` w daemonie.
+
+2. **Wszystkie ścieżki konfiguracji** – poprawione na `/etc/permup/`:
+   - `/etc/permup/permup.cfg`
+   - `/etc/permup/permdown.cfg`
+   - `/etc/permup/shell.rc`
+   - `/etc/permup/permup.time`
+   - `/etc/permup/permup.session`
+   - `/etc/permup/permup.ratelimit`
+
+3. **Poprawione referencje do plików** – we wszystkich sekcjach (3.1, 4.1-4.6, 5.2, 5.3, 5.8) ścieżki są spójne.
